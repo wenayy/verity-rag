@@ -5,9 +5,11 @@
 **A self-verifying agentic RAG engine.**
 Ask a question about a company's knowledge base. Verity plans its searches, checks whether the evidence it found is enough, searches again when something is missing, and fact-checks its own answer before returning it, with a citation on every sentence.
 
-![python](https://img.shields.io/badge/python-3.10%20%7C%203.12-blue) ![tests](https://img.shields.io/badge/tests-27%20passing-brightgreen) ![MRR](https://img.shields.io/badge/hard--set%20MRR-1.00-brightgreen) ![license](https://img.shields.io/badge/license-MIT-lightgrey)
+![python](https://img.shields.io/badge/python-3.10%20%7C%203.12-blue) ![tests](https://img.shields.io/badge/tests-29%20passing-brightgreen) ![MRR](https://img.shields.io/badge/hard--set%20MRR-1.00-brightgreen) ![license](https://img.shields.io/badge/license-MIT-lightgrey)
 
 </div>
+
+![Verity answering three knowledge-base questions: each answer is quoted from the source with a citation, and the right panel shows the agent routing, retrieving, grading and verifying](docs/demo.gif)
 
 ## Why I built this
 
@@ -110,6 +112,7 @@ verity eval                         # retrieval ablation     (offline)
 verity ask "Who looks after our 3PL customer in Copenhagen, and which office are they in?" -v
 verity chat                         # multi-turn, follow-ups like "which office is she in?" work
 verity serve                        # http://localhost:8000  (chat UI with live agent reasoning)
+verity serve --demo                 # same UI with no API key: an offline extractive model quotes the sources
 ```
 
 **Fully local, with no API key:** `docker compose --profile local up --build`, then `docker compose exec ollama ollama pull llama3.1:8b`.
