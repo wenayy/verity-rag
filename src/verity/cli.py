@@ -104,8 +104,12 @@ def cmd_eval(args) -> None:
 
 
 def cmd_serve(args) -> None:
+    import os
+
     import uvicorn
 
+    if args.demo:
+        os.environ["VERITY_DEMO"] = "1"
     uvicorn.run("verity.api.server:create_app", factory=True, host=args.host, port=args.port, reload=False)
 
 
@@ -130,6 +134,7 @@ def main(argv: list[str] | None = None) -> None:
     sv = sub.add_parser("serve", help="run the API + web UI")
     sv.add_argument("--host", default="0.0.0.0")
     sv.add_argument("--port", type=int, default=8000)
+    sv.add_argument("--demo", action="store_true", help="offline extractive model, no API key needed")
     sv.set_defaults(fn=cmd_serve)
     args = p.parse_args(argv)
     args.fn(args)

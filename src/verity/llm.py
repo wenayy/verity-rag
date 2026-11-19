@@ -132,10 +132,10 @@ class FakeLLM:
     answers by echoing the first retrieved context line.
     """
 
-    model = "fake"
-
-    def __init__(self, handler: Callable[[list[Message], bool], str] | None = None):
+    def __init__(self, handler: Callable[[list[Message], bool], str] | None = None, *, model: str = "fake",
+                 delay: float = 0.0):
         self.handler = handler or default_fake_handler
+        self.model, self.delay = model, delay  # delay: seconds per streamed word, for demos
         self.calls: list[list[Message]] = []
 
     def complete(self, messages: list[Message], *, temperature: float = 0.0, json_mode: bool = False) -> str:
@@ -148,6 +148,8 @@ class FakeLLM:
     def stream(self, messages: list[Message], *, temperature: float = 0.0) -> Iterator[str]:
         text = self.complete(messages)
         for i, word in enumerate(text.split(" ")):
+            if self.delay:
+                time.sleep(self.delay)
             yield word if i == 0 else " " + word
 
 
@@ -175,3 +177,53 @@ def default_fake_handler(messages: list[Message], json_mode: bool) -> str:
     # answer generation: cite the first source
     m = re.search(r"\[1\][^\n]*\n(.+)", user)
     return (m.group(1).strip()[:200] if m else "I don't know.") + " [1]"
+
+
+_WORD = re.compile(r"[a-z0-9]+(?:[.,][0-9]+)*")
+
+
+def _overlap(text: str, query_words: set[str]) -> int:
+    from .index.bm25 import STOPWORDS
+
+    return len({w for w in _WORD.findall(text.lower()) if w not in STOPWORDS} & query_words)
+
+
+def _passages(user: str) -> list[tuple[int, str]]:
+    body = user.split("SOURCES:", 1)[-1].split("PASSAGES:", 1)[-1].split("\n\nQUESTION:")[0]
+    return [(int(m.group(1)), m.group(2)) for m in re.finditer(r"^\[(\d+)\] (.*?)(?=^\[\d+\] |\Z)", body, re.S | re.M)]
+
+
+def extractive_demo_handler(messages: list[Message], json_mode: bool) -> str:
+    """Offline demo model: answers by quoting the sentences of the retrieved sources that best match the
+    question, with citations. Extractive, so it cannot invent facts; it can only pick the wrong sentence."""
+    from .index.bm25 import STOPWORDS
+
+    system, user = messages[0]["content"], messages[-1]["content"]
+    question = user.split("QUESTION:")[-1].split("PASSAGES:")[0]
+    qw = {w for w in _WORD.findall(question.lower()) if w not in STOPWORDS}
+    if "TASK:RERANK" in system or "TASK:GRADE" in system:
+        ranked = sorted(_passages(user), key=lambda p: -_overlap(p[1], qw))
+        ids = [n for n, t in ranked if _overlap(t, qw) >= 2] or [ranked[0][0]] if ranked else []
+        if "TASK:RERANK" in system:
+            return json.dumps({"ranked_ids": [n for n, _ in ranked]})
+        return json.dumps({"relevant_ids": ids[:4], "sufficient": True, "missing": ""})
+    if "TASK:" in system:
+        return default_fake_handler(messages, json_mode)
+    best: list[tuple[int, int, str]] = []
+    for n, text in _passages(user):
+        for line in text.split("\n")[1:]:  # first line is the source title
+            if " > " in line and not line.rstrip().endswith("."):
+                continue  # contextual section header, not content
+            for sent in re.split(r"(?<=[.!?])\s+", line.strip().lstrip("- ")):
+                if len(sent.split()) >= 4:
+                    best.append((_overlap(sent, qw), n, sent.rstrip(".")))
+    best.sort(key=lambda x: -x[0])
+    picked, seen = [], set()
+    top = best[0][0] if best else 0
+    for score, n, sent in best:
+        if score >= max(2, 0.7 * top) and sent not in seen:
+            seen.add(sent)
+            picked.append(f"{sent} [{n}].")
+        if len(picked) == 2:
+            break
+    return " ".join(picked) or "I could not find that in the knowledge base."

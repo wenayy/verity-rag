@@ -51,7 +51,12 @@ def create_app(settings: Settings | None = None, agent: KnowledgeAgent | None = 
         if state["agent"] is None:
             if not (s.index_dir / "meta.json").exists():
                 KnowledgeIndex.from_settings(s).save(s.index_dir)
-            state["agent"] = build_agent(s)
+            llm = None
+            if s.demo:
+                from ..llm import FakeLLM, extractive_demo_handler
+
+                llm = FakeLLM(extractive_demo_handler, model="offline extractive demo", delay=0.03)
+            state["agent"] = build_agent(s, llm=llm)
         STORE.path = s.trace_file
         yield
 

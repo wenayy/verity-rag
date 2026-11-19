@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,8 +43,16 @@ class Settings(BaseSettings):
     max_iterations: int = 2  # corrective retrieval rounds
     verify_answers: bool = True
 
+    # --- offline demo: an extractive model that quotes the retrieved sources, no API key needed
+    demo: bool = False
+
     # --- observability
     trace_file: Path | None = Path(".verity_traces.jsonl")
+
+    @field_validator("trace_file", mode="before")
+    @classmethod
+    def _empty_means_off(cls, v):
+        return None if v in ("", None) else v  # VERITY_TRACE_FILE= disables the trace log
 
 
 def get_settings() -> Settings:

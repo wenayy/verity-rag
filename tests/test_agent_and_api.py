@@ -162,3 +162,24 @@ def test_provider_failure_returns_502(index):
     with TestClient(create_app(agent=agent), raise_server_exceptions=False) as c:
         r = c.post("/api/ask", json={"question": "anything"})
     assert r.status_code == 502 and "VERITY_LLM_BASE_URL" in r.json()["error"]
+
+
+def test_extractive_demo_model_quotes_and_cites_sources(index):
+    from verity.llm import extractive_demo_handler
+
+    llm = FakeLLM(extractive_demo_handler)
+    ans = KnowledgeAgent(HybridRetriever(index, llm, top_k=6), llm).ask("Who looks after our 3PL customer in Copenhagen?")
+    assert "Nordhavn" in ans.answer and ans.citations
+    assert all(c.doc_id in ans.retrieved_doc_ids for c in ans.citations)
+
+
+def test_empty_trace_file_setting_disables_trace_log(monkeypatch, tmp_path):
+    from verity.config import Settings
+    from verity.tracing import TraceStore, trace
+
+    monkeypatch.setenv("VERITY_TRACE_FILE", "")
+    assert Settings().trace_file is None
+    store = TraceStore(path=tmp_path)  # a directory: writing fails, the request must not
+    with trace("t", store=store):
+        pass
+    assert store.recent(1)
