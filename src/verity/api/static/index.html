@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Verity · self-verifying agentic RAG</title>
+<style>
+  :root { --bg:#0f1115; --panel:#161a21; --line:#262c36; --text:#e6e8eb; --muted:#8b93a1; --accent:#5ec2a8; --warn:#e6b450; --bad:#e5707a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); height:100vh; display:grid; grid-template-columns: 1fr 380px; }
+  header { grid-column: 1 / -1; padding:14px 22px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  header span { color:var(--muted); font-size:13px; }
+  main { display:flex; flex-direction:column; min-height:0; }
+  #chat { flex:1; overflow-y:auto; padding:22px; display:flex; flex-direction:column; gap:16px; }
+  .msg { max-width:760px; padding:12px 16px; border-radius:10px; white-space:pre-wrap; }
+  .user { align-self:flex-end; background:#22303c; }
+  .bot { align-self:flex-start; background:var(--panel); border:1px solid var(--line); }
+  .cite { display:inline-block; font-size:11px; padding:0 5px; margin:0 1px; border-radius:4px; background:#24453d; color:var(--accent); cursor:default; }
+  .sources { margin-top:10px; display:flex; flex-wrap:wrap; gap:6px; }
+  .src { font-size:12px; border:1px solid var(--line); border-radius:6px; padding:3px 8px; color:var(--muted); }
+  .meta { margin-top:8px; font-size:12px; color:var(--muted); }
+  .badge { font-size:11px; padding:1px 6px; border-radius:4px; margin-left:6px; }
+  .ok { background:#1f3a31; color:var(--accent);} .no { background:#402328; color:var(--bad);}
+  form { display:flex; gap:10px; padding:16px 22px; border-top:1px solid var(--line); }
+  input { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:11px 14px; font-size:15px; }
+  button { background:var(--accent); color:#06231c; border:0; border-radius:8px; padding:0 18px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; }
+  aside { border-left:1px solid var(--line); overflow-y:auto; padding:18px; background:#12151b; }
+  aside h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 12px; }
+  .step { border-left:2px solid var(--line); padding:4px 0 10px 12px; font-size:13px; }
+  .step b { color:var(--accent); font-weight:600; }
+  .step.warn b { color:var(--warn); }
+  .step small { color:var(--muted); display:block; word-break:break-word; }
+  .examples { display:flex; flex-wrap:wrap; gap:8px; padding:0 22px 10px; }
+  .examples button { background:transparent; border:1px solid var(--line); color:var(--muted); font-weight:400; padding:5px 10px; font-size:13px; }
+</style>
+</head>
+<body>
+<header><h1>Verity</h1><span id="health">agentic RAG · hybrid retrieval · self-verifying</span></header>
+<main>
+  <div id="chat"></div>
+  <div class="examples" id="examples"></div>
+  <form id="f"><input id="q" placeholder="Ask about people, products, pricing, contracts, policies…" autocomplete="off" /><button id="b">Ask</button></form>
+</main>
+<aside><h2>Agent reasoning</h2><div id="steps"><small style="color:var(--muted)">Each step of the retrieve → grade → refine → generate → verify loop appears here live.</small></div></aside>
+<script>
+const chat = document.getElementById('chat'), stepsEl = document.getElementById('steps');
+const history = [];
+const examples = ["Who looks after our 3PL customer in Copenhagen?", "What first-response time is Kaveri Foods entitled to for a P1 issue?",
+  "Can I fly business class to a 7 hour client meeting?", "What caused the March 2025 outage?", "Which office is she in?"];
+const ex = document.getElementById('examples');
+examples.forEach(e => { const b = document.createElement('button'); b.type='button'; b.textContent = e; b.onclick = () => ask(e); ex.appendChild(b); });
+fetch('/api/health').then(r => r.json()).then(h => document.getElementById('health').textContent =
+  `${h.chunks} chunks · ${h.mode} retrieval · model ${h.model}`).catch(() => {});
+
+function esc(s) { return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function render(text) { return esc(text).replace(/\[(\d+)\]/g, '<span class="cite">$1</span>'); }
+function addStep(name, detail, warn) {
+  const d = document.createElement('div'); d.className = 'step' + (warn ? ' warn' : '');
+  d.innerHTML = `<b>${name}</b><small>${detail}</small>`; stepsEl.appendChild(d); stepsEl.scrollTop = 1e9;
+}
+function describe(s) {
+  switch (s.step) {
+    case 'contextualize': return ['contextualize', `→ "${esc(s.standalone_question)}"`];
+    case 'route': return ['route', s.needs_retrieval ? 'knowledge-base question' : 'small talk, no retrieval'];
+    case 'retrieve': return [`retrieve #${s.iteration}`, `queries: ${s.queries.map(q => '“'+esc(q)+'”').join(', ')}<br>top: ${[...new Set(s.hits.map(h => esc(h.title)))].slice(0,5).join(' · ')}`];
+    case 'grade': return [`grade #${s.iteration}`, `${s.relevant.length} relevant · ${s.sufficient ? 'sufficient ✓' : 'missing: ' + esc(s.missing)}`, !s.sufficient];
+    case 'refine': return ['refine query', `“${esc(s.query)}”`, true];
+    case 'verify': return ['verify', s.grounded ? 'all claims grounded ✓' : 'unsupported: ' + s.unsupported.map(esc).join('; '), !s.grounded];
+    default: return [s.step, JSON.stringify(s)];
+  }
+}
+async function ask(question) {
+  const btn = document.getElementById('b'); btn.disabled = true; stepsEl.innerHTML = '';
+  const u = document.createElement('div'); u.className = 'msg user'; u.textContent = question; chat.appendChild(u);
+  const m = document.createElement('div'); m.className = 'msg bot'; m.innerHTML = '<span style="color:var(--muted)">thinking…</span>'; chat.appendChild(m);
+  chat.scrollTop = 1e9;
+  let text = '', started = false;
+  const resp = await fetch('/api/ask/stream', { method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ question, history }) });
+  const reader = resp.body.getReader(), dec = new TextDecoder(); let buf = '';
+  while (true) {
+    const { value, done } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i; while ((i = buf.indexOf('\n\n')) >= 0) {
+      const raw = buf.slice(0, i); buf = buf.slice(i + 2);
+      const type = (raw.match(/^event: (.*)$/m) || [])[1], data = JSON.parse((raw.match(/^data: (.*)$/m) || [])[1] || '{}');
+      if (type === 'step') { const [n, d, w] = describe(data); addStep(n, d, w); }
+      else if (type === 'token') { if (!started) { m.innerHTML = ''; started = true; } text += data.text; m.innerHTML = render(text); }
+      else if (type === 'revision') { text = data.text; m.innerHTML = render(text); addStep('regenerated', 'answer rewritten in strict mode', true); }
+      else if (type === 'error') { m.innerHTML = `<span style="color:var(--bad)">${esc(data.error)}</span>`; }
+      else if (type === 'final') {
+        const src = data.citations.map(c => `<span class="src">[${c.n}] ${esc(c.title)}${c.section && c.section !== c.title ? ' › ' + esc(c.section.split(' > ').pop()) : ''}</span>`).join('');
+        const g = data.grounded === null ? '' : `<span class="badge ${data.grounded ? 'ok' : 'no'}">${data.grounded ? 'grounded' : 'unverified'}</span>`;
+        const u = data.usage || {};
+        m.innerHTML = render(data.answer) + (src ? `<div class="sources">${src}</div>` : '') +
+          `<div class="meta">${data.latency_ms ?? '?'} ms · ${u.llm_calls ?? 0} LLM calls · ${(u.prompt_tokens||0)+(u.completion_tokens||0)} tokens · $${(u.cost_usd||0).toFixed(4)} · ${data.iterations} retrieval round(s)${g}</div>`;
+        history.push({ role: 'user', content: question }, { role: 'assistant', content: data.answer });
+      }
+      chat.scrollTop = 1e9;
+    }
+  }
+  btn.disabled = false;
+}
+document.getElementById('f').onsubmit = e => { e.preventDefault(); const q = document.getElementById('q'); if (q.value.trim()) { ask(q.value.trim()); q.value = ''; } };
+</script>
+</body>
+</html>
