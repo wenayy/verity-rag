@@ -5,35 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Verity · self-verifying agentic RAG</title>
 <style>
-  :root { --bg:#0f1115; --panel:#161a21; --line:#262c36; --text:#e6e8eb; --muted:#8b93a1; --accent:#5ec2a8; --warn:#e6b450; --bad:#e5707a; }
+  /* graphite ramp, one teal accent: the primary action and the "grounded" state */
+  :root { --bg:#141415; --deep:#0f0f10; --card:#19191b; --raised:#232325; --line:rgba(237,237,237,.08);
+          --text:#ededed; --text2:#a1a1a6; --muted:#85858b; --accent:#5ec2a8; --on-accent:#06231c; --bad:#e5484d;
+          --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace; --ease: cubic-bezier(.22,1,.36,1); }
   * { box-sizing: border-box; }
-  body { margin:0; font:15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); height:100vh; display:grid; grid-template-columns: 1fr 380px; }
-  header { grid-column: 1 / -1; padding:14px 22px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; }
-  header h1 { font-size:16px; margin:0; font-weight:600; }
-  header span { color:var(--muted); font-size:13px; }
+  body { margin:0; font:15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--text);
+         height:100vh; display:grid; grid-template-columns: 1fr 360px; grid-template-rows: 56px 1fr; }
+  header { grid-column: 1 / -1; padding:0 24px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:center; }
+  header h1 { font-size:16px; margin:0; font-weight:500; }
+  header span { color:var(--muted); font:12px var(--mono); }
   main { display:flex; flex-direction:column; min-height:0; }
-  #chat { flex:1; overflow-y:auto; padding:22px; display:flex; flex-direction:column; gap:16px; }
-  .msg { max-width:760px; padding:12px 16px; border-radius:10px; white-space:pre-wrap; }
-  .user { align-self:flex-end; background:#22303c; }
-  .bot { align-self:flex-start; background:var(--panel); border:1px solid var(--line); }
-  .cite { display:inline-block; font-size:11px; padding:0 5px; margin:0 1px; border-radius:4px; background:#24453d; color:var(--accent); cursor:default; }
-  .sources { margin-top:10px; display:flex; flex-wrap:wrap; gap:6px; }
-  .src { font-size:12px; border:1px solid var(--line); border-radius:6px; padding:3px 8px; color:var(--muted); }
-  .meta { margin-top:8px; font-size:12px; color:var(--muted); }
-  .badge { font-size:11px; padding:1px 6px; border-radius:4px; margin-left:6px; }
-  .ok { background:#1f3a31; color:var(--accent);} .no { background:#402328; color:var(--bad);}
-  form { display:flex; gap:10px; padding:16px 22px; border-top:1px solid var(--line); }
-  input { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:11px 14px; font-size:15px; }
-  button { background:var(--accent); color:#06231c; border:0; border-radius:8px; padding:0 18px; font-weight:600; cursor:pointer; }
+  #chat { flex:1; overflow-y:auto; padding:24px; display:flex; flex-direction:column; gap:16px; }
+  .msg { max-width:720px; padding:12px 16px; border-radius:12px; white-space:pre-wrap; }
+  .user { align-self:flex-end; background:var(--raised); }
+  .bot { align-self:flex-start; background:var(--card); border:1px solid var(--line); }
+  .cite { font:11px var(--mono); color:var(--text2); background:var(--raised); border:1px solid var(--line); padding:0 4px; margin:0 2px; border-radius:4px; vertical-align:1px; }
+  .sources { margin-top:12px; display:flex; flex-wrap:wrap; gap:8px; }
+  .src { font-size:12px; border:1px solid var(--line); border-radius:6px; padding:4px 8px; color:var(--text2); }
+  .meta { margin-top:8px; font:12px var(--mono); color:var(--muted); font-variant-numeric:tabular-nums; }
+  .badge { font-size:12px; margin-left:8px; }
+  .ok { color:var(--accent);} .no { color:var(--bad);}
+  form { display:flex; gap:8px; padding:16px 24px; border-top:1px solid var(--line); }
+  input { flex:1; background:var(--card); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:12px 16px; font-size:15px; }
+  input:focus-visible, button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  button { background:var(--accent); color:var(--on-accent); border:0; border-radius:8px; padding:0 20px; font-weight:500; cursor:pointer;
+           transition:background-color .15s var(--ease), transform .12s var(--ease); }
+  button:active { transform:scale(.98); }
   button:disabled { opacity:.5; }
-  aside { border-left:1px solid var(--line); overflow-y:auto; padding:18px; background:#12151b; }
-  aside h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 12px; }
-  .step { border-left:2px solid var(--line); padding:4px 0 10px 12px; font-size:13px; }
-  .step b { color:var(--accent); font-weight:600; }
-  .step.warn b { color:var(--warn); }
-  .step small { color:var(--muted); display:block; word-break:break-word; }
-  .examples { display:flex; flex-wrap:wrap; gap:8px; padding:0 22px 10px; }
-  .examples button { background:transparent; border:1px solid var(--line); color:var(--muted); font-weight:400; padding:5px 10px; font-size:13px; }
+  aside { border-left:1px solid var(--line); overflow-y:auto; padding:20px; background:var(--deep); }
+  aside h2 { font-size:13px; font-weight:500; color:var(--text2); margin:0 0 12px; }
+  .step { border-left:1px solid var(--line); padding:4px 0 12px 12px; font-size:13px; }
+  .step b { color:var(--text); font-weight:500; }
+  .step.warn b { color:#e0a84a; }
+  .step small { color:var(--muted); display:block; word-break:break-word; margin-top:2px; }
+  .examples { display:flex; flex-wrap:wrap; gap:8px; padding:0 24px 12px; }
+  .examples button { background:transparent; border:1px solid var(--line); color:var(--text2); font-weight:400; padding:4px 12px; font-size:13px; height:32px; }
+  .examples button:hover { background:var(--raised); color:var(--text); }
 </style>
 </head>
 <body>
@@ -65,16 +73,16 @@ function describe(s) {
     case 'contextualize': return ['contextualize', `→ "${esc(s.standalone_question)}"`];
     case 'route': return ['route', s.needs_retrieval ? 'knowledge-base question' : 'small talk, no retrieval'];
     case 'retrieve': return [`retrieve #${s.iteration}`, `queries: ${s.queries.map(q => '“'+esc(q)+'”').join(', ')}<br>top: ${[...new Set(s.hits.map(h => esc(h.title)))].slice(0,5).join(' · ')}`];
-    case 'grade': return [`grade #${s.iteration}`, `${s.relevant.length} relevant · ${s.sufficient ? 'sufficient ✓' : 'missing: ' + esc(s.missing)}`, !s.sufficient];
+    case 'grade': return [`grade #${s.iteration}`, `${s.relevant.length} relevant · ${s.sufficient ? 'sufficient' : 'missing: ' + esc(s.missing)}`, !s.sufficient];
     case 'refine': return ['refine query', `“${esc(s.query)}”`, true];
-    case 'verify': return ['verify', s.grounded ? 'all claims grounded ✓' : 'unsupported: ' + s.unsupported.map(esc).join('; '), !s.grounded];
+    case 'verify': return ['verify', s.grounded ? 'all claims grounded' : 'unsupported: ' + s.unsupported.map(esc).join('; '), !s.grounded];
     default: return [s.step, JSON.stringify(s)];
   }
 }
 async function ask(question) {
   const btn = document.getElementById('b'); btn.disabled = true; stepsEl.innerHTML = '';
   const u = document.createElement('div'); u.className = 'msg user'; u.textContent = question; chat.appendChild(u);
-  const m = document.createElement('div'); m.className = 'msg bot'; m.innerHTML = '<span style="color:var(--muted)">thinking…</span>'; chat.appendChild(m);
+  const m = document.createElement('div'); m.className = 'msg bot'; m.innerHTML = '<span style="color:var(--muted)">Searching the knowledge base…</span>'; chat.appendChild(m);
   chat.scrollTop = 1e9;
   let text = '', started = false;
   const resp = await fetch('/api/ask/stream', { method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -92,7 +100,7 @@ async function ask(question) {
       else if (type === 'error') { m.innerHTML = `<span style="color:var(--bad)">${esc(data.error)}</span>`; }
       else if (type === 'final') {
         const src = data.citations.map(c => `<span class="src">[${c.n}] ${esc(c.title)}${c.section && c.section !== c.title ? ' › ' + esc(c.section.split(' > ').pop()) : ''}</span>`).join('');
-        const g = data.grounded === null ? '' : `<span class="badge ${data.grounded ? 'ok' : 'no'}">${data.grounded ? 'grounded' : 'unverified'}</span>`;
+        const g = data.grounded === null ? '' : `<span class="badge ${data.grounded ? 'ok' : 'no'}">${data.grounded ? '· grounded' : '· unverified'}</span>`;
         const u = data.usage || {};
         m.innerHTML = render(data.answer) + (src ? `<div class="sources">${src}</div>` : '') +
           `<div class="meta">${data.latency_ms ?? '?'} ms · ${u.llm_calls ?? 0} LLM calls · ${(u.prompt_tokens||0)+(u.completion_tokens||0)} tokens · $${(u.cost_usd||0).toFixed(4)} · ${data.iterations} retrieval round(s)${g}</div>`;
