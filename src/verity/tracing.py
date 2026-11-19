@@ -70,8 +70,11 @@ class TraceStore:
         with self._lock:
             self._items.append(t)
             if self.path:
-                with self.path.open("a") as f:
-                    f.write(json.dumps(t.to_dict()) + "\n")
+                try:
+                    with self.path.open("a") as f:
+                        f.write(json.dumps(t.to_dict()) + "\n")
+                except OSError:
+                    pass  # losing a trace line must never fail the user's request
 
     def get(self, trace_id: str) -> Trace | None:
         with self._lock:
