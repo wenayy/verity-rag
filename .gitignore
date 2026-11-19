@@ -1,0 +1,10 @@
+__pycache__/
+*.egg-info/
+.venv/
+.env
+.verity_index/
+.verity_traces.jsonl
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
