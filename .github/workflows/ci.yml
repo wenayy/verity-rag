@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests scripts
+      - run: pytest -q
+      - name: Corpus and golden set are reproducible
+        run: python scripts/build_corpus.py && git diff --exit-code knowledge_base evals/golden.jsonl
+      - name: Retrieval regression gate (offline, no API key needed)
+        run: |
+          verity eval --mode retrieval -k 5
+          python - <<'EOF'
+          import json
+          r = json.load(open("evals/results/retrieval.json"))
+          best = max(x["mrr"] for x in r["hard (paraphrase + multi-hop)"])
+          print("best hard-set MRR:", best)
+          assert best >= 0.95, "retrieval quality regressed"
+          EOF
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t verity .
+      - run: |
+          docker run -d -p 8000:8000 -e VERITY_LLM_API_KEY=dummy --name verity verity
+          for i in $(seq 1 20); do curl -fs localhost:8000/api/health && exit 0; sleep 1; done; docker logs verity; exit 1

@@ -1,0 +1,28 @@
+# Option A (cloud LLM):   cp .env.example .env  # set VERITY_LLM_API_KEY
+#                         docker compose up --build app
+# Option B (100% local):  docker compose --profile local up --build
+#                         docker compose exec ollama ollama pull llama3.1:8b
+services:
+  app:
+    build: .
+    ports: ["8000:8000"]
+    env_file: [.env]
+    restart: unless-stopped
+
+  app-local:
+    profiles: ["local"]
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      VERITY_LLM_BASE_URL: http://ollama:11434/v1
+      VERITY_LLM_MODEL: llama3.1:8b
+      VERITY_LLM_API_KEY: ollama
+    depends_on: [ollama]
+
+  ollama:
+    profiles: ["local"]
+    image: ollama/ollama:latest
+    volumes: ["ollama:/root/.ollama"]
+
+volumes:
+  ollama:
